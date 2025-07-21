@@ -151,6 +151,28 @@ def generate_payment_dates(start_date, end_date, frequency_months):
     return dates
 
 
+def get_year_faction(day_count, accural_period_days, prev_payment_date, payment_date):
+    # Use year fraction for coupon calculation based on convention
+    if day_count == "ACT/360":
+        year_fraction = accural_period_days / 360.0
+    elif day_count == "ACT/365":
+        year_fraction = accural_period_days / 365.0
+    elif day_count == "30/360":
+        # Simplified 30/360 year fraction
+        d1 = prev_payment_date.day
+        d2 = payment_date.day
+        m1 = prev_payment_date.month
+        m2 = payment_date.month
+        y1 = prev_payment_date.year
+        y2 = payment_date.year
+        days_30_360 = (y2 - y1) * 360 + (m2 - m1) * 30 + (d2 - d1)
+        year_fraction = days_30_360 / 360.0
+    else:
+        raise ValueError("Unsupported day count convention for fixed leg.")
+
+    return year_fraction
+
+
 def price_interest_rate_swap(
         valuation_date: datetime.date,
         notional: float,
@@ -160,7 +182,7 @@ def price_interest_rate_swap(
         fixed_payment_frequency_months: int,
         floating_payment_frequency_months: int,
         zero_curve,  # List of (maturity_in_years, zero_rate) tuples
-        current_floating_rate: float =None,  # For the first floating period, if already set
+        current_floating_rate: float = None,  # For the first floating period, if already set
         day_count_fixed_leg="ACT/360",
         day_count_floating_leg="ACT/360"
 ):
@@ -211,23 +233,7 @@ def price_interest_rate_swap(
         accrual_period_days = (payment_date - prev_payment_date).days
 
         # Use year fraction for coupon calculation based on convention
-        if day_count_fixed_leg == "ACT/360":
-            year_fraction = accrual_period_days / 360.0
-        elif day_count_fixed_leg == "ACT/365":
-            year_fraction = accrual_period_days / 365.0
-        elif day_count_fixed_leg == "30/360":
-            # Simplified 30/360 year fraction
-            d1 = prev_payment_date.day
-            d2 = payment_date.day
-            m1 = prev_payment_date.month
-            m2 = payment_date.month
-            y1 = prev_payment_date.year
-            y2 = payment_date.year
-            days_30_360 = (y2 - y1) * 360 + (m2 - m1) * 30 + (d2 - d1)
-            year_fraction = days_30_360 / 360.0
-        else:
-            raise ValueError("Unsupported day count convention for fixed leg.")
-
+        year_fraction = get_year_faction(day_count_fixed_leg, accrual_period_days, prev_payment_date, payment_date)
         fixed_payment_amount = notional * fixed_rate * year_fraction
 
         # Get the discount factor for the payment date
@@ -263,24 +269,9 @@ def price_interest_rate_swap(
         if valuation_date > swap_start_date and valuation_date < first_payment_date:
             prev_reset_date = valuation_date  # For the purpose of accrual calculation for the known rate
 
+
         accrual_period_days_first = (first_payment_date - prev_reset_date).days
-
-        if day_count_floating_leg == "ACT/360":
-            year_fraction_first = accrual_period_days_first / 360.0
-        elif day_count_floating_leg == "ACT/365":
-            year_fraction_first = accrual_period_days_first / 365.0
-        elif day_count_floating_leg == "30/360":
-            d1 = prev_reset_date.day
-            d2 = first_payment_date.day
-            m1 = prev_reset_date.month
-            m2 = first_payment_date.month
-            y1 = prev_reset_date.year
-            y2 = first_payment_date.year
-            days_30_360 = (y2 - y1) * 360 + (m2 - m1) * 30 + (d2 - d1)
-            year_fraction_first = days_30_360 / 360.0
-        else:
-            raise ValueError("Unsupported day count convention for floating leg.")
-
+        year_fraction_first = get_year_faction(day_count_floating_leg, accrual_period_days_first, prev_reset_date, first_payment_date)
         first_floating_payment_amount = notional * current_floating_rate * year_fraction_first
         zero_rate_for_df_first = get_zero_rate_from_curve(valuation_date, first_payment_date, zero_curve)
         discount_factor_first = calculate_discount_factor(zero_rate_for_df_first,
@@ -330,96 +321,14 @@ def price_interest_rate_swap(
     if not future_floating_payment_dates:  # All payments are in the past or swap is very short
         pv_floating_leg_remaining = 0.0
     else:
-        # The present value of the remaining floating leg can be seen as the present value
-        # of the notional received at the next reset date, minus the present value of the notional
-        # paid at maturity, plus the present value of the first known coupon.
-        # This is a common simplification for pedagogical purposes.
-        # A more rigorous approach would involve forward rate calculations.
-
-        # The value of a floating leg is often approximated by Notional * (DF_start - DF_end)
-        # where DF_start is 1 if on a reset date, or the discount factor to the next reset.
-        # DF_end is the discount factor to the final maturity.
-
-        # Let's use the standard "value of floating leg is par on reset date" idea
-        # and then discount the notional from the next reset date.
-        # This is a simplification.
-
-        # For the remaining floating payments, the value is essentially the notional
-        # discounted from the next reset date to maturity.
-        # This is the "receive floating" part.
-        # A more accurate way would be to calculate forward rates.
-
-        # Simplified valuation of the remaining floating leg:
-        # It's equivalent to a bond that pays par at maturity and coupons at floating rates.
-        # At any reset date, its value is par.
-        # So, the value of the floating leg is approximately:
-        # Notional * DiscountFactor(next_reset_date) - Notional * DiscountFactor(final_maturity_date)
-        # This simplifies to Notional * (DF_current - DF_final) if current is a reset date.
-
-        # Let's use the standard formula for floating leg value:
-        # PV_Floating_Leg = Notional * (DF_at_current_reset - DF_at_maturity)
-        # Where DF_at_current_reset is 1 if on a reset date, else DF to next reset.
-
-        # For simplicity, we'll assume the floating leg's value is approximately the notional
-        # discounted from the valuation date to the maturity date.
-        # This is a major simplification and not how it's done in production.
-        # A more accurate model would calculate forward rates for each period.
-
-        # Standard approach for floating leg valuation:
-        # Value of Floating Leg = Notional * (DF_today - DF_maturity) + PV of first fixed coupon (if already set)
-        # This is for a receiver of floating.
-        # DF_today is 1 if valuation_date is a reset date.
-
-        # Let's use the standard approach for the floating leg, assuming it resets to par.
-        # The value of the floating leg is the Notional discounted from the current date
-        # to the final maturity, plus the present value of the first coupon if it's known.
-        # This is the most common pedagogical simplification.
-
-        # Value of Floating Leg = Notional * (DF(next_reset_date) - DF(final_payment_date)) + PV(first_fixed_coupon)
-        # where DF(next_reset_date) is 1 if valuation_date is the reset date.
-
-        # For a payer swap (pay fixed, receive floating):
-        # NPV = PV(Floating Leg) - PV(Fixed Leg)
-
-        # Floating Leg PV = Notional * (Discount Factor at next reset - Discount Factor at maturity)
-        # This is the standard way to value a floating leg that resets to par.
-        # The "current" discount factor (DF_current_reset) is 1 if on a reset date.
-
-        # Let's use the most common simplified valuation for the floating leg:
-        # PV(Floating Leg) = Notional * (DF(t_start) - DF(t_end))
-        # where t_start is the valuation date (or next reset date if valuation is between resets)
-        # and t_end is the swap end date.
-        # This is a simplification. A more accurate model calculates forward rates for each period.
-
-        # For the purpose of this example, we'll use a very common simplification:
-        # The value of the floating leg is approximated by the notional discounted from the
-        # valuation date to the swap end date. This is only true if the floating rate
-        # is constant and equal to the discount rate, which is not generally the case.
-
-        # A more robust floating leg valuation:
-        # PV_Floating_Leg = Notional * (DF_to_next_reset_date - DF_to_final_maturity_date)
-        # + PV of the first known floating coupon (if applicable).
-
-        # Let's refine the floating leg calculation using forward rates.
-        # The floating leg payments are based on forward rates implied by the zero curve.
-        # The value of the floating leg is the sum of the present values of these forward payments.
-
-        # The first floating rate is `current_floating_rate` if provided, otherwise it's the forward rate.
-        # For subsequent periods, the forward rate is implied by the zero curve.
-
-        # Re-calculating PV_Floating_Leg using forward rates
         pv_floating_leg = 0.0
-
-        # Determine the effective start of the first floating period for forward rate calculation
-        # This is typically the last reset date or the swap start date if no reset has occurred.
-        # For simplicity, we'll assume the first floating rate applies from `swap_start_date`
-        # up to `future_floating_payment_dates[0]`.
-
-        # If current_floating_rate is not provided, we need to derive the first forward rate
-        # from the zero curve.
-
         previous_payment_date = swap_start_date
         for i, payment_date in enumerate(future_floating_payment_dates):
+            # Year fraction for the forward rate calculation
+            year_fraction_forward_days = (payment_date - previous_payment_date).days
+            year_fraction_forward = get_year_faction(day_count_floating_leg, year_fraction_forward_days,
+                                                     previous_payment_date, payment_date)
+
             # If this is the very first payment and current_floating_rate is provided, use it.
             if i == 0 and current_floating_rate is not None:
                 rate_for_period = current_floating_rate
@@ -439,24 +348,6 @@ def price_interest_rate_swap(
                 # If valuation_date is exactly previous_payment_date, df_start should be 1.0
                 if previous_payment_date == valuation_date:
                     df_start = 1.0
-
-                # Year fraction for the forward rate calculation
-                year_fraction_forward_days = (payment_date - previous_payment_date).days
-                if day_count_floating_leg == "ACT/360":
-                    year_fraction_forward = year_fraction_forward_days / 360.0
-                elif day_count_floating_leg == "ACT/365":
-                    year_fraction_forward = year_fraction_forward_days / 365.0
-                elif day_count_floating_leg == "30/360":
-                    d1 = previous_payment_date.day
-                    d2 = payment_date.day
-                    m1 = previous_payment_date.month
-                    m2 = payment_date.month
-                    y1 = previous_payment_date.year
-                    y2 = payment_date.year
-                    days_30_360 = (y2 - y1) * 360 + (m2 - m1) * 30 + (d2 - d1)
-                    year_fraction_forward = days_30_360 / 360.0
-                else:
-                    raise ValueError("Unsupported day count convention for floating leg.")
 
                 if year_fraction_forward == 0:  # Handle zero-length periods if any
                     rate_for_period = 0.0

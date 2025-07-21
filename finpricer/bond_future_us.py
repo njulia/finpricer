@@ -514,6 +514,7 @@ def price_us_bond_future(
 
 # --- Example Usage ---
 if __name__ == "__main__":
+    # Parameters from the user
     valuation_date = datetime.date(2025, 7, 10)
     futures_delivery_date = datetime.date(2025, 9, 20)  # Example delivery date for Sept futures
     repo_rate = 0.025  # 2.5% annual repo rate

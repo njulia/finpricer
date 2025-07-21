@@ -96,13 +96,17 @@ def calculate_bond_future_no_acc(bond_price, interest_rate, maturity_years):
     return round(F, 2)
 
 
+# --- Example Usage ---
 if __name__ == "__main__":
+    # Parameters from the user
     clean_price = 100
-    risk_free_rate = 5
+    risk_free_rate = 4
     time_to_delivery = 1
     accrued_interest_start = 0
     accrued_interest_delivery = 0
     conversion_factor = 1
+
+    # Calculate and print the price
     price = calculate_bond_future(clean_price, risk_free_rate, time_to_delivery,
                                   accrued_interest_start, accrued_interest_delivery,conversion_factor)
     print(f"The calculated price of the bond future is: ${price:.2f}")
