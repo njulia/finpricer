@@ -55,6 +55,7 @@ The Net Present Value (NPV) of an interest rate swap, from the perspective of th
 """
 import datetime
 import numpy as np
+from utils.datetime_utils import DateUtils
 
 
 def calculate_discount_factor(zero_rate, time_in_years):
@@ -124,55 +125,6 @@ def calculate_accrued_interest(start_date, end_date, annual_rate, notional, day_
         raise ValueError("Unsupported day count convention.")
 
 
-def generate_payment_dates(start_date, end_date, frequency_months):
-    """
-    Generates a list of semi-annual or quarterly payment dates.
-    """
-    dates = []
-    current_date = start_date
-    while current_date < end_date:
-        # Add months, handling year rollovers
-        year = current_date.year + (current_date.month + frequency_months - 1) // 12
-        month = (current_date.month + frequency_months - 1) % 12 + 1
-        day = current_date.day  # Keep the same day of the month
-
-        # Handle cases where day might exceed days in target month (e.g., Jan 31 + 1 month = Feb 31 -> Feb 28)
-        try:
-            next_date = datetime.date(year, month, day)
-        except ValueError:
-            # If day is too high for the month, set to last day of the month
-            next_date = datetime.date(year, month, 1) + datetime.timedelta(days=-1)
-
-        if next_date > end_date:
-            break  # Stop if next payment date is beyond swap end date
-
-        dates.append(next_date)
-        current_date = next_date
-    return dates
-
-
-def get_year_faction(day_count, accural_period_days, prev_payment_date, payment_date):
-    # Use year fraction for coupon calculation based on convention
-    if day_count == "ACT/360":
-        year_fraction = accural_period_days / 360.0
-    elif day_count == "ACT/365":
-        year_fraction = accural_period_days / 365.0
-    elif day_count == "30/360":
-        # Simplified 30/360 year fraction
-        d1 = prev_payment_date.day
-        d2 = payment_date.day
-        m1 = prev_payment_date.month
-        m2 = payment_date.month
-        y1 = prev_payment_date.year
-        y2 = payment_date.year
-        days_30_360 = (y2 - y1) * 360 + (m2 - m1) * 30 + (d2 - d1)
-        year_fraction = days_30_360 / 360.0
-    else:
-        raise ValueError("Unsupported day count convention for fixed leg.")
-
-    return year_fraction
-
-
 def price_interest_rate_swap(
         valuation_date: datetime.date,
         notional: float,
@@ -215,7 +167,7 @@ def price_interest_rate_swap(
 
     # --- Fixed Leg Valuation ---
     pv_fixed_leg = 0.0
-    fixed_payment_dates = generate_payment_dates(swap_start_date, swap_end_date, fixed_payment_frequency_months)
+    fixed_payment_dates = DateUtils.generate_payment_dates(swap_start_date, swap_end_date, fixed_payment_frequency_months)
 
     # Filter out past payments for valuation
     future_fixed_payment_dates = [d for d in fixed_payment_dates if d > valuation_date]
@@ -230,10 +182,8 @@ def price_interest_rate_swap(
         # Calculate accrual period in years based on day count convention
         # For simplicity, we'll use a simplified day count for the coupon calculation
         # and then use the zero rate for the exact payment date for discounting.
-        accrual_period_days = (payment_date - prev_payment_date).days
-
         # Use year fraction for coupon calculation based on convention
-        year_fraction = get_year_faction(day_count_fixed_leg, accrual_period_days, prev_payment_date, payment_date)
+        year_fraction = DateUtils.year_fraction(prev_payment_date, payment_date, day_count_fixed_leg)
         fixed_payment_amount = notional * fixed_rate * year_fraction
 
         # Get the discount factor for the payment date
@@ -255,7 +205,7 @@ def price_interest_rate_swap(
     # Plus the PV of the *first* floating coupon if it's already fixed.
 
     pv_floating_leg = 0.0
-    floating_payment_dates = generate_payment_dates(swap_start_date, swap_end_date, floating_payment_frequency_months)
+    floating_payment_dates = DateUtils.generate_payment_dates(swap_start_date, swap_end_date, floating_payment_frequency_months)
 
     # Filter out past payments
     future_floating_payment_dates = [d for d in floating_payment_dates if d > valuation_date]
@@ -269,9 +219,7 @@ def price_interest_rate_swap(
         if valuation_date > swap_start_date and valuation_date < first_payment_date:
             prev_reset_date = valuation_date  # For the purpose of accrual calculation for the known rate
 
-
-        accrual_period_days_first = (first_payment_date - prev_reset_date).days
-        year_fraction_first = get_year_faction(day_count_floating_leg, accrual_period_days_first, prev_reset_date, first_payment_date)
+        year_fraction_first = DateUtils.year_fraction(prev_reset_date, first_payment_date, day_count_floating_leg)
         first_floating_payment_amount = notional * current_floating_rate * year_fraction_first
         zero_rate_for_df_first = get_zero_rate_from_curve(valuation_date, first_payment_date, zero_curve)
         discount_factor_first = calculate_discount_factor(zero_rate_for_df_first,
@@ -325,9 +273,7 @@ def price_interest_rate_swap(
         previous_payment_date = swap_start_date
         for i, payment_date in enumerate(future_floating_payment_dates):
             # Year fraction for the forward rate calculation
-            year_fraction_forward_days = (payment_date - previous_payment_date).days
-            year_fraction_forward = get_year_faction(day_count_floating_leg, year_fraction_forward_days,
-                                                     previous_payment_date, payment_date)
+            year_fraction_forward = DateUtils.year_fraction(previous_payment_date, payment_date, day_count_floating_leg)
 
             # If this is the very first payment and current_floating_rate is provided, use it.
             if i == 0 and current_floating_rate is not None:
