@@ -21,7 +21,7 @@ class DateUtils:
 
         return dt
     @staticmethod
-    def year_fraction(start_date, end_date, convention="Actual/365"):
+    def year_fraction(start_date, end_date, convention="ACT/365"):
         """
         Calculates year fraction between two dates.
         Simplified conventions.

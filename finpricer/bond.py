@@ -59,7 +59,7 @@ The bond pricing formula breaks down into two main parts:
 **The bond's total price is simply the sum of these two present values.** The higher the discount rate (market interest rate), the lower the present value, and thus the lower the bond's price. Conversely, a lower discount rate leads to a higher present value and a higher bond price (as seen in your example, where the 4% market rate is lower than the 5% coupon, leading to a premium price).
 
 """
-def calculate_bond_price(
+def price_bond(
         face_value: float,
         coupon_rate: float,
         years_to_maturity: float,
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     interest_rate = 4  # in percent
 
     # Calculate and print the price
-    price = calculate_bond_price(face_value, coupon_rate, years_to_maturity, interest_rate)
+    price = price_bond(face_value, coupon_rate, years_to_maturity, interest_rate)
     print(f"The calculated price of the bond is: ${price:.2f}")  # 1081.11
 
 

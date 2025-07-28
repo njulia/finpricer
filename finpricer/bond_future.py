@@ -47,7 +47,7 @@ This model provides a fundamental benchmark for evaluating whether a bond future
 """
 import math
 
-def calculate_bond_future(
+def price_bond_future(
     clean_price: float,
     risk_free_rate: float,
     time_to_delivery: float,
@@ -89,7 +89,7 @@ def calculate_bond_future(
     return quoted_futures_price
 
 
-def calculate_bond_future_no_acc(bond_price, interest_rate, maturity_years):
+def price_bond_future_no_acc(bond_price, interest_rate, maturity_years):
     # Using the formula: F = P * e^(r * T)
     r = interest_rate / 100  # convert percentage to decimal
     F = bond_price * math.exp(r * maturity_years)
@@ -107,6 +107,6 @@ if __name__ == "__main__":
     conversion_factor = 1
 
     # Calculate and print the price
-    price = calculate_bond_future(clean_price, risk_free_rate, time_to_delivery,
+    price = price_bond_future(clean_price, risk_free_rate, time_to_delivery,
                                   accrued_interest_start, accrued_interest_delivery,conversion_factor)
     print(f"The calculated price of the bond future is: ${price:.2f}")

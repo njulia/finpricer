@@ -25,20 +25,20 @@ class YieldCurve:
 
     def get_zero_rate(self, date):
         """Gets the zero rate for a given date."""
-        time_to_maturity_years = DateUtils.year_fraction(self.valuation_date, date, "Actual/365")
+        time_to_maturity_years = DateUtils.year_fraction(self.valuation_date, date, "ACT/365")
         if time_to_maturity_years <= 0:
             return self.zero_rates[0] if len(self.zero_rates) > 0 else 0.0  # Or handle error
         return self._zero_rate_interp(time_to_maturity_years).item()  # .item() to get scalar from array
 
     def get_discount_factor(self, date):
         """Calculates the discount factor for a given date."""
-        time_to_maturity_years = DateUtils.year_fraction(self.valuation_date, date, "Actual/365")
+        time_to_maturity_years = DateUtils.year_fraction(self.valuation_date, date, "ACT/365")
         if time_to_maturity_years <= 0:
             return 1.0  # Discount factor for today is 1
         zero_rate = self.get_zero_rate(date)
         return np.exp(-zero_rate * time_to_maturity_years)
 
-    def get_forward_rate(self, start_date, end_date, day_count_convention="Actual/365"):
+    def get_forward_rate(self, start_date, end_date, day_count_convention="ACT/365"):
         """
         Calculates the forward rate between two future dates.
         Assumes continuous compounding for zero rates.

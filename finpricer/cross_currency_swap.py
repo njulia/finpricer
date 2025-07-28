@@ -32,7 +32,7 @@ This cross-currency interest rate swap pricing model calculates the Net Present 
 import datetime
 from scipy.optimize import brentq  # For finding the fair fixed rate or basis spread
 from utils.datetime_utils import DateUtils
-from utils.price_utils import YieldCurve
+from utils.curve_utils import YieldCurve
 
 
 # --- 3. Cross-Currency Swap Pricer ---
